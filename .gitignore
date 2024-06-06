@@ -1,0 +1,6 @@
+bin/
+obj/
+.vscode/
+cfg/
+data/games.json
+data/words.txt
