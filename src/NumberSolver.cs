@@ -312,6 +312,8 @@ public static class ExpressionConverter
       {
         obj = new CalcOperation(obj, MainModule.BinaryMinus, sub);
       }
+
+      return obj;
     }
     else if (expr is MultiplicativeExpression muExpr)
     {
@@ -326,13 +328,15 @@ public static class ExpressionConverter
 
       foreach (CalcObject mul in multiplied)
       {
-        obj = new CalcOperation(obj, MainModule.BinaryPlus, mul);
+        obj = new CalcOperation(obj, MainModule.BinaryTimes, mul);
       }
 
       foreach (CalcObject div in divided)
       {
-        obj = new CalcOperation(obj, MainModule.BinaryMinus, div);
+        obj = new CalcOperation(obj, MainModule.BinaryDivide, div);
       }
+
+      return obj;
     }
 
     throw new InvalidOperationException();

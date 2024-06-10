@@ -6,6 +6,7 @@ using DSharpPlus.Commands;
 using DSharpPlus.Commands.Processors.SlashCommands;
 using DSharpPlus.Entities;
 using DSharpPlus.EventArgs;
+using DSharpPlus.Exceptions;
 using Nixill.Collections;
 using Nixill.Utils;
 using NodaTime;
@@ -88,7 +89,10 @@ public class CountdownGame
   }
 
   internal void NoteActivity()
-    => LastActivity = SystemClock.Instance.GetCurrentInstant();
+  {
+    LastActivity = SystemClock.Instance.GetCurrentInstant();
+    DeleteQueue.Add(this);
+  }
 
   public CountdownGame(ulong host, ulong thread)
   {
@@ -127,6 +131,62 @@ public class CountdownGame
     gameObject["rounds"] = gameRounds;
 
     return gameObject;
+  }
+
+  public Stream Export()
+  {
+    Stream file = new MemoryStream();
+    StreamWriter writer = new StreamWriter(file);
+    writer.Write(Serialize().ToString());
+    writer.Flush();
+    file.Position = 0;
+
+    return file;
+  }
+
+  public async Task HandleEndOfGame()
+  {
+    DictionaryGenerator<ulong, int> soloScores = new();
+    DictionaryGenerator<ulong, int> vsScores = new();
+
+    foreach (CountdownRound round in Rounds)
+    {
+      foreach (var entry in round.Scores)
+      {
+        soloScores[entry.Player] += entry.Score;
+      }
+
+      foreach (var entry in round.Scores.MaxManyBy(x => x.Priority))
+      {
+        vsScores[entry.Player] += entry.Score;
+      }
+    }
+
+    State = GameState.GameEnded;
+
+    try
+    {
+      var msg = await Thread.SendMessageAsync(
+        "The game is over! The scores are as follows:",
+        new DiscordEmbedBuilder()
+          .AddField("Vs scores:", (vsScores.Any()) ? string.Join("\n", vsScores
+            .Select(vsc => $"<@{vsc.Key}>: {vsc.Value}")) : "(None!)")
+          .AddField("Solo scores:", (soloScores.Any()) ? string.Join("\n", soloScores
+            .Select(vsc => $"<@{vsc.Key}>: {vsc.Value}")) : "(None!)"));
+
+      await msg.RespondAsync(new DiscordMessageBuilder()
+        .WithContent("The following export can be given back to the bot to continue the game later:")
+        .AddFile($"game-{Thread.Id}.json", Export(), AddFileOptions.None)
+      );
+    }
+    catch (UnauthorizedException)
+    {
+      // do nothing
+    }
+    catch (NotFoundException)
+    {
+      // do nothing here either
+    }
   }
 }
 
@@ -379,35 +439,8 @@ public class GameCommands
       return;
     }
 
-    await ctx.DeferResponseAsync();
-
-    DictionaryGenerator<ulong, int> soloScores = new();
-    DictionaryGenerator<ulong, int> vsScores = new();
-
-    foreach (CountdownRound round in game.Rounds)
-    {
-      foreach (var entry in round.Scores)
-      {
-        soloScores[entry.Player] += entry.Score;
-      }
-
-      foreach (var entry in round.Scores.MaxManyBy(x => x.Priority))
-      {
-        vsScores[entry.Player] += entry.Score;
-      }
-    }
-
-    game.State = GameState.GameEnded;
-
-    await ctx.EditResponseAsync(
-      "The game is over! The scores are as follows:",
-      new DiscordEmbedBuilder()
-        .AddField("Vs scores:", (vsScores.Any()) ? string.Join("\n", vsScores
-          .Select(vsc => $"<@{vsc.Key}>: {vsc.Value}")) : "(None!)")
-        .AddField("Solo scores:", (soloScores.Any()) ? string.Join("\n", soloScores
-          .Select(vsc => $"<@{vsc.Key}>: {vsc.Value}")) : "(None!)"));
-
-    game.NoteActivity();
+    await ctx.RespondAsync("Ending game.", true);
+    await game.HandleEndOfGame();
   }
 
   [Command("export")]
@@ -421,13 +454,7 @@ public class GameCommands
       return;
     }
 
-    Stream file = new MemoryStream();
-    StreamWriter writer = new StreamWriter(file);
-    writer.Write(result.Game.Serialize().ToString());
-    writer.Flush();
-    file.Position = 0;
-
-    var msg = new DiscordFollowupMessageBuilder().AddFile("game.json", file, AddFileOptions.None).AsEphemeral();
+    var msg = new DiscordFollowupMessageBuilder().AddFile("game.json", result.Game.Export(), AddFileOptions.None).AsEphemeral();
 
     await ctx.RespondAsync(msg);
   }

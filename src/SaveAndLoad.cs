@@ -16,6 +16,8 @@ public static class SaveAndLoad
   {
     LetterFunctions.ValidWords = new(File.ReadAllLines("data/words.txt"));
 
+    List<DeletionTask> tasks = new();
+
     Instant now = SystemClock.Instance.GetCurrentInstant();
     JsonArray gamesList = (JsonArray)JsonNode.Parse(File.ReadAllText("data/games.json"));
     foreach (JsonObject gameObject in gamesList.Cast<JsonObject>())
@@ -23,7 +25,6 @@ public static class SaveAndLoad
       var parsedLastActivity = InstantPattern.ExtendedIso.Parse((string)gameObject["lastActivity"]);
       if (!parsedLastActivity.Success) continue;
       Instant lastActivity = parsedLastActivity.Value;
-      if (lastActivity < now - Duration.FromSeconds(86400)) continue;
 
       try
       {
@@ -43,6 +44,7 @@ public static class SaveAndLoad
         }
 
         game.LastActivity = lastActivity;
+        tasks.Add(new() { QueuedAt = lastActivity, Game = game });
         CountdownGameController.GamesInProgress[game.ThreadId] = game;
       }
       catch (NotFoundException)
@@ -50,11 +52,15 @@ public static class SaveAndLoad
         // do nothing and move on to the next game
       }
     }
+
+    DeleteQueue.Clear();
+    DeleteQueue.AddAll(tasks.OrderBy(x => x.QueuedAt));
   }
 
   internal static async Task OnGuildDownload(DiscordClient sender, GuildDownloadCompletedEventArgs args)
   {
     await LoadFromFiles();
+    Task _ = Task.Run(DeleteQueue.Begin);
   }
 
   public static void SaveToFiles()
@@ -68,23 +74,6 @@ public static class SaveAndLoad
       gamesList.Add(gameObject);
     }
     File.WriteAllText("data/games.json", gamesList.ToString());
-  }
-}
-
-public static class EventHandlers
-{
-  public static void RegisterEvents(DiscordClient discord, CommandsExtension commands)
-  {
-    discord.GuildDownloadCompleted += SaveAndLoad.OnGuildDownload;
-    discord.ComponentInteractionCreated += GameCommandEvents.JoinButtonPressed;
-    discord.ComponentInteractionCreated += GameCommandEvents.LeaveButtonPressed;
-    discord.ComponentInteractionCreated += LetterButtonEvents.DrawConsonantButtonPressed;
-    discord.ComponentInteractionCreated += LetterButtonEvents.DrawVowelButtonPressed;
-    discord.ComponentInteractionCreated += LetterButtonEvents.ShowWordsButtonPressed;
-
-    commands.CommandErrored += CountdownBotMain.OnCommandErrored;
-
-    CountdownRound.DeserializeEvent += LettersRound.Deserialize;
   }
 }
 

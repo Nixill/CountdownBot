@@ -321,6 +321,11 @@ public static class LetterInteractionLogic
     char newLetter = LetterDecks.Draw(game.ThreadId, which == LetterDeck.Vowels);
     round.Letters.Add(newLetter);
 
+    await round.Message.ModifyAsync(round.GetMessageBuilder());
+
+    if (intr.Type == DiscordInteractionType.ApplicationCommand)
+      await intr.EphemeralResponse("Drawn!");
+
     if (round.Letters.Count == 9)
     {
       round.SetState(GameState.Declarations);
@@ -328,11 +333,6 @@ public static class LetterInteractionLogic
         .WithContent("All letters are chosen! Submit your declarations now using `/letters declare`.\n"
           + $"<@{round.Controller}>, you should declare first!"));
     }
-
-    await round.Message.ModifyAsync(round.GetMessageBuilder());
-
-    if (intr.Type == DiscordInteractionType.ApplicationCommand)
-      await intr.EphemeralResponse("Drawn!");
   }
 
   public static async Task ShowWords(DiscordInteraction intr, IEnumerable<char> letters)
@@ -385,7 +385,8 @@ public class LettersCommands
         .And(Condition.IsGameHost)
         .And(Condition.NoRoundInProgress
           .AppendError(" Use `force:True` to bypass this.")),
-    out string reason, out ConditionResult result))
+    out string reason, out ConditionResult result) &&
+      (result.FailedCondition != "NoRoundInProgress" || !force))
     {
       await ctx.RespondAsync(reason, true);
       return;
@@ -519,7 +520,7 @@ public class LettersCommands
     if (!Condition.Check(intr,
       Condition.IsGameThread
         .And(Condition.AnyRoundExists)
-        .And(Condition.IsLettersRound)
+        .And(Condition.CanRoundSetup)
         .And(Condition.AreLettersDrawing)
         .And(Condition.IsRoundControllerOrHost
           .WithError("You're not the host of this game!"))
@@ -632,6 +633,17 @@ public class LettersCommands
       return;
     }
 
+    if (Condition.Check(ctx.Interaction,
+      Condition.IsGameThread
+        .And(Condition.AnyRoundExists)
+        .And(Condition.IsLettersRound)
+        .And(Condition.IsRoundInProgress),
+      out _, out _))
+    {
+      await ctx.RespondAsync("This command can't be used during a letters round until the guesses are all submitted!", true);
+      return;
+    }
+
     letters = letters.ToUpper().Replace(" ", "");
 
     if (letters.Length < 2)
@@ -689,6 +701,17 @@ public class LettersCommands
       return;
     }
 
+    if (Condition.Check(ctx.Interaction,
+      Condition.IsGameThread
+        .And(Condition.AnyRoundExists)
+        .And(Condition.IsLettersRound)
+        .And(Condition.IsRoundInProgress),
+      out _, out _))
+    {
+      await ctx.RespondAsync("This command can't be used during a letters round until the guesses are all submitted!", true);
+      return;
+    }
+
     await ctx.DeferResponseAsync();
 
     letters = letters.ToUpper().Replace(" ", "");
@@ -721,6 +744,64 @@ public class LettersCommands
       await ctx.EditResponseAsync($"`{word}` is a valid word with the letters {string.Join("", letters)}.");
     else
       await ctx.EditResponseAsync($"`{word}` is not a valid word with the letters {string.Join("", letters)} ({string.Join("; ", whyNot)}).");
+  }
+
+  [Command("pass")]
+  [Description("Leave the round with no guess")]
+  public async Task Pass(SlashCommandContext ctx)
+  {
+    var intr = ctx.Interaction;
+
+    if (!Condition.Check(intr,
+      Condition.IsGameThread
+        .And(Condition.AnyRoundExists)
+        .And(Condition.IsNumbersRound)
+        .And(Condition.IsPlayerInRound)
+        .And(Condition.CanRoundDeclare),
+      out string reason, out ConditionResult result))
+    {
+      await ctx.RespondAsync(reason, true);
+      return;
+    }
+
+    await ctx.RespondAsync($"<@{ctx.User.Id}> has passed.");
+
+    NumbersRound round = (NumbersRound)result.Round;
+
+    await round.HandleDeparture(ctx.User.Id);
+  }
+
+  [Command("close")]
+  [Description("Close the round (cancel or end guessing)")]
+  public async Task Close(SlashCommandContext ctx)
+  {
+    var intr = ctx.Interaction;
+
+    if (!Condition.Check(intr,
+      Condition.IsGameThread
+        .And(Condition.AnyRoundExists)
+        .And(Condition.IsRoundInProgress)
+        .And(Condition.IsLettersRound)
+        .And(Condition.IsGameHost),
+    out string reason, out ConditionResult result))
+    {
+      await ctx.RespondAsync(reason, true);
+      return;
+    }
+
+    NumbersRound round = (NumbersRound)result.Round;
+
+    if (round.State == GameState.Setup || round.State == GameState.Declarations)
+    {
+      await ctx.RespondAsync("The active round has been cancelled!");
+      round.SetState(GameState.RoundEnded);
+    }
+    else
+    {
+      await ctx.RespondAsync("The active round has been ended!");
+      round.Players.RemoveAll(x => !round.Submissions.ContainsKey(x));
+      await round.HandleEndOfRound();
+    }
   }
 }
 

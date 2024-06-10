@@ -34,7 +34,7 @@ public class CountdownBotMain
     MainModule.LoadBinaryDivide();
     MainModule.LoadBinaryMinus();
     MainModule.LoadBinaryPlus();
-    MainModule.LoadBinaryPower();
+    MainModule.LoadBinaryTimes();
 
     OwnerID = ulong.Parse(File.ReadAllText("cfg/owner"));
 
