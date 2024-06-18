@@ -81,7 +81,7 @@ public class LettersRound : CountdownRound
     roundObject["type"] = "letters";
     roundObject["controller"] = Controller;
     roundObject["state"] = State.ToString();
-    roundObject["letters"] = new string(Letters.ToArray());
+    roundObject["letters"] = Letters.FormString();
     roundObject["players"] = new JsonArray(Players.Select(x => JsonValue.Create(x)).ToArray());
     roundObject["message"] = Message?.Id ?? 0;
     JsonObject submissionsObject = new();
@@ -109,7 +109,7 @@ public class LettersRound : CountdownRound
   public DiscordMessageBuilder GetMessageBuilder()
     => new DiscordMessageBuilder()
       .WithContent($"# Round {Game.Rounds.Count} — Letters:\n"
-        + $"## Current letters selection: {((Letters.Count > 0) ? $"`{new string(Letters.ToArray())}`" : "(None)")}\n"
+        + $"## Current letters selection: {((Letters.Count > 0) ? $"`{Letters.FormString()}`" : "(None)")}\n"
         + $"In control of the round: <@{Controller}>\n")
       .AddComponents(
         new DiscordButtonComponent(
@@ -225,8 +225,11 @@ public class LettersRound : CountdownRound
       var vsScores = scores.MaxManyBy(x => x.Score);
       var vsScoresText = vsScores.Select(x => $"- <@{x.user}>: {x.Score}{(x.Score == starScore ? (starScore == 18 ? " 🌟" : " ⭐") : "")}");
       scoresMessage = $"**Vs and Solo Scores**\n{string.Join("\n", vsScoresText)}";
-      var soloScores = scores.Except(vsScores).Select(x => $"- <@{x.user}>: {x.Score}");
+      var zeroScores = scores.Where(x => x.Score == 0);
+      var zeroScoresList = zeroScores.Select(x => $"- <@{x.user}>");
+      var soloScores = scores.Except(vsScores).Except(zeroScores).Select(x => $"- <@{x.user}>: {x.Score}");
       if (soloScores.Any()) scoresMessage += $"\n**Solo scores only**:\n{string.Join("\n", soloScores)}";
+      if (zeroScores.Any()) scoresMessage += $"\n**Zero points, vs or solo:**\n{string.Join("\n", zeroScoresList)}";
     }
 
     string starMessage = "";
@@ -624,7 +627,7 @@ public class LettersCommands
       }
       else
       {
-        letters = new string(((LettersRound)result.Round).Letters.ToArray());
+        letters = ((LettersRound)result.Round).Letters.FormString();
       }
     }
     else if (!Regex.IsMatch(letters.ToUpper().Replace(" ", ""), "^[a-z]+$"))
@@ -692,7 +695,7 @@ public class LettersCommands
       }
       else
       {
-        letters = new string(((LettersRound)result.Round).Letters.ToArray());
+        letters = ((LettersRound)result.Round).Letters.FormString();
       }
     }
     else if (!Regex.IsMatch(letters.ToUpper().Replace(" ", ""), "^[A-Z]+$"))
@@ -807,7 +810,9 @@ public class LettersCommands
 
 public static class LetterFunctions
 {
-  internal static AVLTreeSet<string> ValidWords = new();
+  internal static AVLTreeSet<string> BaseWords;
+  internal static AVLTreeSet<string> Additions;
+  internal static AVLTreeSet<string> Exceptions;
 
   public static IEnumerable<string> WordsForLetters(string letters)
     => WordsForLetters((IEnumerable<char>)(letters.ToUpper()));
@@ -821,7 +826,7 @@ public static class LetterFunctions
       .Select(kvp => kvp.Key)
       .ToDictionary(key => key, key => 0);
 
-    foreach (string word in ValidWords)
+    foreach (string word in BaseWords)
     {
       Dictionary<char, int> wordBuckets = new(emptyBuckets);
       foreach (char chr in word)
@@ -870,7 +875,7 @@ public static class LetterFunctions
   }
 
   public static bool InWordList(string word)
-    => ValidWords.Contains(word.ToUpper());
+    => (BaseWords.Contains(word.ToUpper()) && !Exceptions.Contains(word.ToUpper())) || Additions.Contains(word.ToUpper());
 }
 
 public static class LetterButtonEvents

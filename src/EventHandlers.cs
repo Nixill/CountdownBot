@@ -20,6 +20,7 @@ public static class EventHandlers
     commands.CommandErrored += CountdownBotMain.OnCommandErrored;
 
     CountdownRound.DeserializeEvent += LettersRound.Deserialize;
+    CountdownRound.DeserializeEvent += NumbersRound.Deserialize;
   }
 }
 

@@ -104,6 +104,8 @@ public class NumbersRound : CountdownRound
     round.Target = (int)obj["target"];
     if (!Enum.TryParse<GameState>((string)obj["state"], out GameState state)) state = GameState.Setup;
     round.SetState(state);
+
+    args.Result = round;
   }
 
   public DiscordMessageBuilder GetMessageBuilder()
@@ -225,12 +227,14 @@ public class NumbersRound : CountdownRound
     else
     {
       var maxScores = scores.MaxManyBy(s => s.Priority);
-      var nonMaxScores = scores.Except(maxScores).OrderByDescending(s => s.Priority);
+      var zeroScores = scores.Where(s => s.Score == 0);
+      var nonMaxScores = scores.Except(maxScores).Except(zeroScores).OrderByDescending(s => s.Priority);
 
       var maxScoreString = $"**Vs and solo scores:**\n{string.Join("\n", maxScores.Select(s => $"- <@{s.User}>: {s.Score}{(s.Priority == -minDifference ? " ⭐" : "")}"))}";
       var nonMaxScoreString = $"**Solo scores only:**\n{string.Join("\n", nonMaxScores.Select(s => $"- <@{s.User}>: {s.Score}"))}";
+      var zeroScoreString = $"**Zero points, vs or solo:**\n{string.Join("\n", zeroScores.Select(s => $"- <@{s.User}>"))}";
 
-      embed.AddField("Scores", maxScoreString + (nonMaxScores.Any() ? $"\n{nonMaxScoreString}" : ""));
+      embed.AddField("Scores", maxScoreString + (nonMaxScores.Any() ? $"\n{nonMaxScoreString}" : "") + (zeroScores.Any() ? $"\n{zeroScoreString}" : ""));
     }
 
     await Game.Thread.SendMessageAsync(embed);
@@ -258,7 +262,6 @@ public class NumbersRound : CountdownRound
 
   internal void FindClosestSolutions()
   {
-
     // Gets the closest
     if (Solutions.ContainsKey(Target))
     {
@@ -673,7 +676,7 @@ public class NumbersCommands
     // Sanitize inputs
     try
     {
-      expression = new string(expression.Select(c => c switch
+      expression = expression.Select(c => c switch
       {
         '[' or '{' or '<' => '(',
         ']' or '}' or '>' => ')',
@@ -685,7 +688,7 @@ public class NumbersCommands
         (>= '0' and <= '9') or '+' or '-' or '*' or '/' or '(' or ')' or '=' => true,
         ' ' or '|' or '\t' or '\n' or '`' => false,
         _ => throw new InvalidOperationException()
-      }).ToArray()).Split("=").MaxBy(s => s.Length);
+      }).FormString().Split("=").MaxBy(s => s.Length);
     }
     catch (InvalidOperationException)
     {
@@ -702,7 +705,7 @@ public class NumbersCommands
     }
     catch (CLSyntaxException e)
     {
-      await ctx.RespondAsync($"Your input wasn't a valid equation:\n```\n{expression}\n{new string((" ").Repeat(e.Position).ToArray())}↑\n```\n{e.Message}", true);
+      await ctx.RespondAsync($"Your input wasn't a valid equation:\n```\n{expression}\n{new string(' ', e.Position)}↑\n```\n{e.Message}", true);
       return;
     }
 
@@ -799,7 +802,7 @@ public class NumbersCommands
     // Sanitize inputs
     try
     {
-      expression = new string(expression.Select(c => c switch
+      expression = expression.Select(c => c switch
       {
         '[' or '{' or '<' => '(',
         ']' or '}' or '>' => ')',
@@ -811,7 +814,7 @@ public class NumbersCommands
         (>= '0' and <= '9') or '+' or '-' or '*' or '/' or '(' or ')' or '=' => true,
         ' ' or '|' or '\t' or '\n' or '`' => false,
         _ => throw new InvalidOperationException()
-      }).ToArray()).Split("=").MaxBy(s => s.Length);
+      }).FormString().Split("=").MaxBy(s => s.Length);
     }
     catch (InvalidOperationException)
     {
@@ -828,7 +831,7 @@ public class NumbersCommands
     }
     catch (CLSyntaxException e)
     {
-      await ctx.RespondAsync($"Your input wasn't a valid equation:\n```\n{expression}\n{new string((" ").Repeat(e.Position).ToArray())}↑\n```\n{e.Message}", true);
+      await ctx.RespondAsync($"Your input wasn't a valid equation:\n```\n{expression}\n{new string(' ', e.Position)}↑\n```\n{e.Message}", true);
       return;
     }
 

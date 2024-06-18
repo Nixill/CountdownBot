@@ -14,7 +14,18 @@ public static class SaveAndLoad
 {
   public static async Task LoadFromFiles()
   {
-    LetterFunctions.ValidWords = new(File.ReadAllLines("data/words.txt"));
+    LetterFunctions.BaseWords = new(File.ReadAllLines("data/words.txt"));
+    var additionsExceptions = File.ReadAllLines("data/exceptions.txt");
+    LetterFunctions.Additions = new(additionsExceptions
+      .Where(w => w[0] == '+')
+      .Select(w => w[1..])
+    );
+    LetterFunctions.Exceptions = new(additionsExceptions
+      .Where(w => w[0] == '-')
+      .Select(w => w[1..])
+    );
+
+    ConundrumFunctions.Conundrums = new(File.ReadAllLines("data/conundrums.txt"));
 
     List<DeletionTask> tasks = new();
 
@@ -22,26 +33,13 @@ public static class SaveAndLoad
     JsonArray gamesList = (JsonArray)JsonNode.Parse(File.ReadAllText("data/games.json"));
     foreach (JsonObject gameObject in gamesList.Cast<JsonObject>())
     {
-      var parsedLastActivity = InstantPattern.ExtendedIso.Parse((string)gameObject["lastActivity"]);
-      if (!parsedLastActivity.Success) continue;
-      Instant lastActivity = parsedLastActivity.Value;
-
       try
       {
-        DiscordChannel thread = await CountdownBotMain.Discord.GetChannelAsync((ulong)gameObject["thread"]);
+        var parsedLastActivity = InstantPattern.ExtendedIso.Parse((string)gameObject["lastActivity"]);
+        if (!parsedLastActivity.Success) continue;
+        Instant lastActivity = parsedLastActivity.Value;
 
-        CountdownGame game = new((ulong)gameObject["host"], (DiscordThreadChannel)thread);
-        game.ActivePlayers.Clear(); // If the host is already part of the game, they'll be added again next line.
-        foreach (ulong player in ((JsonArray)gameObject["players"]).Select(x => (ulong)x)) game.ActivePlayers.Add(player);
-        foreach (ulong player in ((JsonArray)gameObject["controllers"]).Select(x => (ulong)x)) game.RoundControllers.Add(player);
-
-        foreach (JsonObject obj in ((JsonArray)gameObject["rounds"]).Cast<JsonObject>())
-        {
-          DeserializeEventArgs<CountdownRound> roundArgs = new(obj, game);
-          CountdownRound.OnDeserialize(roundArgs);
-          // game.Rounds.Add(roundArgs.Result);
-          // Actually, the above happens in the constructor.
-        }
+        var game = await ParseGame(gameObject, true);
 
         game.LastActivity = lastActivity;
         tasks.Add(new() { QueuedAt = lastActivity, Game = game });
@@ -57,6 +55,30 @@ public static class SaveAndLoad
     DeleteQueue.AddAll(tasks.OrderBy(x => x.QueuedAt));
   }
 
+  public static async ValueTask<CountdownGame> ParseGame(JsonObject gameObject, bool restorePlayers, ulong threadId = 0)
+  {
+    if (threadId == 0) threadId = (ulong)gameObject["thread"];
+    DiscordChannel thread = await CountdownBotMain.Discord.GetChannelAsync(threadId);
+
+    CountdownGame game = new((ulong)gameObject["host"], (DiscordThreadChannel)thread);
+    game.ActivePlayers.Clear(); // If the host is already part of the game, they'll be added again next line.
+    if (restorePlayers)
+    {
+      foreach (ulong player in ((JsonArray)gameObject["players"]).Select(x => (ulong)x)) game.ActivePlayers.Add(player);
+    }
+    foreach (ulong player in ((JsonArray)gameObject["controllers"]).Select(x => (ulong)x)) game.RoundControllers.Add(player);
+
+    foreach (JsonObject obj in ((JsonArray)gameObject["rounds"]).Cast<JsonObject>())
+    {
+      DeserializeEventArgs<CountdownRound> roundArgs = new(obj, game);
+      CountdownRound.OnDeserialize(roundArgs);
+      // game.Rounds.Add(roundArgs.Result);
+      // Actually, the above happens in the constructor.
+    }
+
+    return game;
+  }
+
   internal static async Task OnGuildDownload(DiscordClient sender, GuildDownloadCompletedEventArgs args)
   {
     await LoadFromFiles();
@@ -65,7 +87,11 @@ public static class SaveAndLoad
 
   public static void SaveToFiles()
   {
-    File.WriteAllLines("data/words.txt", LetterFunctions.ValidWords);
+    File.WriteAllLines("data/exceptions.txt",
+      LetterFunctions.Additions
+        .Select(s => $"+{s}")
+        .Concat(LetterFunctions.Exceptions
+          .Select(s => $"-{s}")));
 
     JsonArray gamesList = new();
     foreach (CountdownGame game in CountdownGameController.GamesInProgress.Values)

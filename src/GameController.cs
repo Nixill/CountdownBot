@@ -169,10 +169,10 @@ public class CountdownGame
       var msg = await Thread.SendMessageAsync(
         "The game is over! The scores are as follows:",
         new DiscordEmbedBuilder()
-          .AddField("Vs scores:", (vsScores.Any()) ? string.Join("\n", vsScores
+          .AddField("Vs scores:", (vsScores.Any()) ? string.Join("\n", vsScores.OrderByDescending(vsc => vsc.Value)
             .Select(vsc => $"<@{vsc.Key}>: {vsc.Value}")) : "(None!)")
-          .AddField("Solo scores:", (soloScores.Any()) ? string.Join("\n", soloScores
-            .Select(vsc => $"<@{vsc.Key}>: {vsc.Value}")) : "(None!)"));
+          .AddField("Solo scores:", (soloScores.Any()) ? string.Join("\n", soloScores.OrderByDescending(ssc => ssc.Value)
+            .Select(ssc => $"<@{ssc.Key}>: {ssc.Value}")) : "(None!)"));
 
       await msg.RespondAsync(new DiscordMessageBuilder()
         .WithContent("The following export can be given back to the bot to continue the game later:")
@@ -457,6 +457,89 @@ public class GameCommands
     var msg = new DiscordFollowupMessageBuilder().AddFile("game.json", result.Game.Export(), AddFileOptions.None).AsEphemeral();
 
     await ctx.RespondAsync(msg);
+  }
+
+  [Command("import")]
+  [Description("Import a downloaded game to continue playing.")]
+  public async Task UploadGame(SlashCommandContext ctx,
+    [Description("The game to upload")] DiscordAttachment upload,
+    [Description("The title of the thread")] string title = null
+  )
+  {
+    if (upload.MediaType != "application/json; charset=utf-8")
+    {
+      await ctx.RespondAsync($"The upload must be a JSON file. (You uploaded {upload.MediaType})", true);
+      return;
+    }
+
+    if (ctx.Channel.IsPrivate)
+    {
+      await ctx.RespondAsync("Games can only be started in servers!");
+      return;
+    }
+
+    if (ctx.Channel.IsThread && CountdownGameController.GamesInProgress.ContainsKey(ctx.Channel.Id))
+    {
+      await ctx.RespondAsync("A game is already occurring in this thread!", true);
+      return;
+    }
+
+    if (title == null)
+    {
+      title = $"Countdown Game {ctx.Interaction.Id}";
+    }
+
+    await ctx.RespondAsync("Processing upload...", true);
+
+    DiscordThreadChannel thread = null;
+
+    if (!ctx.Channel.IsThread)
+    {
+      try
+      {
+        thread = await ctx.Channel.CreateThreadAsync(title, DiscordAutoArchiveDuration.Day, DiscordChannelType.PublicThread, "Created for a Countdown game.");
+      }
+      catch (Exception e)
+      {
+        await ctx.EditResponseAsync($"Could not create a thread for a Countdown game ({e.ToString()})");
+        return;
+      }
+    }
+    else
+    {
+      thread = ctx.Channel as DiscordThreadChannel;
+    }
+
+    await ctx.DeleteResponseAsync();
+
+    try
+    {
+      string url = upload.Url;
+      HttpClient client = new();
+      string response = await client.GetStringAsync(url);
+      JsonObject gameObject = (JsonObject)JsonNode.Parse(response);
+
+      CountdownGame game = await SaveAndLoad.ParseGame(gameObject, false, thread.Id);
+
+      game.Host = ctx.User.Id;
+      game.ActivePlayers = new HashSet<ulong>() { ctx.User.Id };
+
+      var joinButton = new DiscordButtonComponent(DiscordButtonStyle.Primary, $"game-join", "Join");
+      var leaveButton = new DiscordButtonComponent(DiscordButtonStyle.Secondary, $"game-leave", "Leave");
+
+      var gameStartMessage = new DiscordMessageBuilder()
+        .WithContent("A Countdown game already in progress is continuing in this thread. Click 'Join' to join!\n"
+          + "(Please note that if you were in the game as exported, you have NOT been automatically rejoined to this game.)")
+        .AddComponents(joinButton, leaveButton);
+
+      await thread.SendMessageAsync(gameStartMessage);
+
+      CountdownGameController.GamesInProgress[thread.Id] = game;
+    }
+    catch (Exception e)
+    {
+      await ctx.FollowupAsync($"Couldn't start the game: {e.Message}\n```\n{e.StackTrace}\n```", true);
+    }
   }
 }
 

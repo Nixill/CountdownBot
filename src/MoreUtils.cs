@@ -32,5 +32,8 @@ public static class MoreUtils
       }
     }
   }
+
+  public static string SJoin<T>(this IEnumerable<T> objects, string with)
+    => string.Join(with, objects);
 }
 

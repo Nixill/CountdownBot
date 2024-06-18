@@ -230,6 +230,27 @@ public class Condition
     "You haven't submitted a declared answer yet!",
     "NotAwaitingNumbersSubmission"
   );
+
+  // Prerequisites: IsGameThread, AnyRoundExists
+  public static readonly Condition IsConundrumRound = new(
+    (i, c) => (c.Round is ConundrumRound),
+    "There isn't a conundrum round in progress!",
+    "IsConundrumRound"
+  );
+
+  // Prerequisites: IsGameThread, AnyRoundExists, IsConundrumRound
+  public static readonly Condition NoPlayerSubmission = new(
+    (i, c) => !(((ConundrumRound)c.Round).Submissions.Any(s => s.User == i.User.Id)),
+    "You've already submitted a conundrum guess!",
+    "NoPlayerSubmission"
+  );
+
+  // Prerequisites: IsGameThread, AnyRoundExists, IsConundrumRound
+  public static readonly Condition ConundrumAnswerNotSet = new(
+    (i, c) => ((ConundrumRound)c.Round).Answer == "",
+    "The conundrum answer is already set!",
+    "ConundrumAnswerNotSet"
+  );
 }
 
 public static class ConditionExtensions
