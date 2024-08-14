@@ -54,17 +54,6 @@ public static class CountdownGameController
     CountdownGame game = GamesInProgress[threadId];
     return intr.User.Id == game.Host;
   }
-
-  public static Task DeleteOldGames()
-  {
-    var now = CountdownBotMain.Now;
-    var day = Duration.FromDays(1);
-    foreach (var key in GamesInProgress.Where(g => g.Value.LastActivity + day < now).Select(x => x.Key))
-    {
-      GamesInProgress.TryRemove(key, out _);
-    }
-    return Task.CompletedTask;
-  }
 }
 
 public class CountdownGame
@@ -362,7 +351,7 @@ public class GameCommands
     {
       try
       {
-        thread = await ctx.Channel.CreateThreadAsync(title, DiscordAutoArchiveDuration.Day, DiscordChannelType.PublicThread, "Created for a Countdown game.");
+        thread = await ctx.Channel.CreateThreadAsync(title, DiscordAutoArchiveDuration.Hour, DiscordChannelType.PublicThread, "Created for a Countdown game.");
       }
       catch (Exception e)
       {
@@ -422,6 +411,69 @@ public class GameCommands
 
     game.Host = newHost.Id;
     await ctx.RespondAsync($"{newHost.Mention} is now the host of this game!");
+  }
+
+  [Command("scores")]
+  public async Task GetGameScores(SlashCommandContext ctx,
+    [Description("Score against a single user")] DiscordUser user = null,
+    [Description("Hide or show?")] bool ephemeral = true
+  )
+  {
+    if (!Condition.Check(ctx.Interaction,
+      Condition.IsGameThread,
+      out string reason, out ConditionResult result
+    ))
+    {
+      await ctx.RespondAsync(reason, true);
+      return;
+    }
+
+    CountdownGame game = result.Game;
+
+    Func<(ulong Player, int Score, int Priority), bool> limit = x => true;
+    if (user == ctx.User) limit = x => x.Player == ctx.User.Id;
+    else if (user != null) limit = x => x.Player == ctx.User.Id || x.Player == user.Id;
+
+    DictionaryGenerator<ulong, int> soloScores = new();
+    DictionaryGenerator<ulong, int> vsScores = new();
+    DictionaryGenerator<ulong, int> compareScores = new();
+
+    foreach (CountdownRound round in game.Rounds)
+    {
+      foreach (var entry in round.Scores.Where(limit))
+      {
+        soloScores[entry.Player] += entry.Score;
+      }
+
+      foreach (var entry in round
+        .Scores
+        .MaxManyBy(x => x.Priority)
+        .Where(limit))
+      {
+        vsScores[entry.Player] += entry.Score;
+      }
+
+      if (user != ctx.User && user != null)
+      {
+        foreach (var entry in round.Scores.Where(limit).MaxManyBy(x => x.Priority))
+        {
+          compareScores[entry.Player] += entry.Score;
+        }
+      }
+    }
+
+    DiscordEmbedBuilder embed = new DiscordEmbedBuilder();
+
+    if (user != null && user != ctx.User)
+      embed.AddField($"Scores against <@{user.Id}>:", (compareScores.Any()) ? string.Join("\n", compareScores.OrderByDescending(csc => csc.Value)
+        .Select(vsc => $"<@{vsc.Key}>: {vsc.Value}")) : "(None!)");
+
+    embed.AddField("Vs scores:", (vsScores.Any()) ? string.Join("\n", vsScores.OrderByDescending(vsc => vsc.Value)
+        .Select(vsc => $"<@{vsc.Key}>: {vsc.Value}")) : "(None!)");
+    embed.AddField("Solo scores:", (soloScores.Any()) ? string.Join("\n", soloScores.OrderByDescending(ssc => ssc.Value)
+        .Select(ssc => $"<@{ssc.Key}>: {ssc.Value}")) : "(None!)");
+
+    await ctx.RespondAsync(embed, ephemeral);
   }
 
   [Command("end")]
@@ -497,7 +549,7 @@ public class GameCommands
     {
       try
       {
-        thread = await ctx.Channel.CreateThreadAsync(title, DiscordAutoArchiveDuration.Day, DiscordChannelType.PublicThread, "Created for a Countdown game.");
+        thread = await ctx.Channel.CreateThreadAsync(title, DiscordAutoArchiveDuration.Hour, DiscordChannelType.PublicThread, "Created for a Countdown game.");
       }
       catch (Exception e)
       {

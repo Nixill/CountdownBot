@@ -758,7 +758,7 @@ public class LettersCommands
     if (!Condition.Check(intr,
       Condition.IsGameThread
         .And(Condition.AnyRoundExists)
-        .And(Condition.IsNumbersRound)
+        .And(Condition.IsLettersRound)
         .And(Condition.IsPlayerInRound)
         .And(Condition.CanRoundDeclare),
       out string reason, out ConditionResult result))
@@ -769,7 +769,7 @@ public class LettersCommands
 
     await ctx.RespondAsync($"<@{ctx.User.Id}> has passed.");
 
-    NumbersRound round = (NumbersRound)result.Round;
+    LettersRound round = (LettersRound)result.Round;
 
     await round.HandleDeparture(ctx.User.Id);
   }
@@ -792,7 +792,7 @@ public class LettersCommands
       return;
     }
 
-    NumbersRound round = (NumbersRound)result.Round;
+    LettersRound round = (LettersRound)result.Round;
 
     if (round.State == GameState.Setup || round.State == GameState.Declarations)
     {
@@ -804,6 +804,102 @@ public class LettersCommands
       await ctx.RespondAsync("The active round has been ended!");
       round.Players.RemoveAll(x => !round.Submissions.ContainsKey(x));
       await round.HandleEndOfRound();
+    }
+  }
+}
+
+[Command("dictionary")]
+public static class DictionaryCommands
+{
+  [Command("add")]
+  public static async Task AddToDictionary(SlashCommandContext ctx,
+    [Description("The word to add")] string word
+  )
+  {
+    if (!Condition.Check(ctx.Interaction,
+      Condition.IsBotOwner,
+    out string reason, out ConditionResult result))
+    {
+      await ctx.RespondAsync(reason, true);
+      return;
+    }
+
+    word = word.ToUpper();
+    var words = LetterFunctions.BaseWords;
+    var exc = LetterFunctions.Exceptions;
+    var add = LetterFunctions.Additions;
+
+    if (words.Contains(word))
+    {
+      add.Remove(word);
+      if (exc.Contains(word))
+      {
+        exc.Remove(word);
+        await ctx.RespondAsync($"{word} has been re-added to the dictionary.");
+      }
+      else
+      {
+        await ctx.RespondAsync($"{word} is already in the dictionary.", true);
+      }
+    }
+    else
+    {
+      exc.Remove(word); // In case updates mess it up
+      if (add.Contains(word))
+      {
+        await ctx.RespondAsync($"{word} is already added to the dictionary.", true);
+      }
+      else
+      {
+        add.Add(word);
+        await ctx.RespondAsync($"{word} has been added to the dictionary.");
+      }
+    }
+  }
+
+  [Command("remove")]
+  public static async Task RemoveFromDictionary(SlashCommandContext ctx,
+    [Description("The word to remove")] string word
+  )
+  {
+    if (!Condition.Check(ctx.Interaction,
+      Condition.IsBotOwner,
+    out string reason, out ConditionResult result))
+    {
+      await ctx.RespondAsync(reason, true);
+      return;
+    }
+
+    word = word.ToUpper();
+    var words = LetterFunctions.BaseWords;
+    var exc = LetterFunctions.Exceptions;
+    var add = LetterFunctions.Additions;
+
+    if (words.Contains(word))
+    {
+      add.Remove(word);
+      if (exc.Contains(word))
+      {
+        await ctx.RespondAsync($"{word} is already not in the dictionary.", true);
+      }
+      else
+      {
+        exc.Add(word);
+        await ctx.RespondAsync($"{word} has been removed from the dictionary.");
+      }
+    }
+    else
+    {
+      exc.Remove(word); // In case updates mess it up
+      if (add.Contains(word))
+      {
+        add.Remove(word);
+        await ctx.RespondAsync($"{word} has been cleared from the dictionary.");
+      }
+      else
+      {
+        await ctx.RespondAsync($"{word} is already not in the dictionary.", true);
+      }
     }
   }
 }

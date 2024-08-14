@@ -21,6 +21,7 @@ public static class EventHandlers
 
     CountdownRound.DeserializeEvent += LettersRound.Deserialize;
     CountdownRound.DeserializeEvent += NumbersRound.Deserialize;
+    CountdownRound.DeserializeEvent += ConundrumRound.Deserialize;
   }
 }
 

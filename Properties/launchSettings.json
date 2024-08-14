@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Main": {
+      "workingDirectory": ".",
+      "commandName": "Project"
+    }
+  }
+}

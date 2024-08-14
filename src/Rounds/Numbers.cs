@@ -597,10 +597,10 @@ public class NumbersCommands
 
     if (success.Count() > 2)
     {
+      await ctx.RespondAsync("Picked!", true);
+
       round.SetNumbers(success.Take(8));
       round.SetState(GameState.Declarations);
-      await ctx.RespondAsync("Numbers and target are chosen! Submit your declarations now using `/numbers declare`.\n"
-          + $"<@{round.Controller}>, you should declare first!");
 
       if (fail.Any())
       {
@@ -623,6 +623,8 @@ public class NumbersCommands
     {
       await ctx.RespondAsync($"The input `{numbers}` could not be parsed into any numbers.");
     }
+
+    await round.Message.ModifyAsync(round.GetMessageBuilder());
 
     if (round.Target != 0)
     {

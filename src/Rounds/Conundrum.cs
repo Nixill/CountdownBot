@@ -336,7 +336,7 @@ public class ConundrumCommands
     else
     {
       await ctx.RespondAsync("The active round has been ended!");
-      round.Players.RemoveAll(x => round.Submissions.Any(s => s.User == x));
+      round.Players.RemoveAll(x => !round.Submissions.Any(s => s.User == x));
       await round.HandleEndOfRound();
     }
   }

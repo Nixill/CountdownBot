@@ -7,7 +7,7 @@ public static class DeleteQueue
 {
   private static ConcurrentQueue<DeletionTask> Tasks = new();
 
-  private static Duration WaitTime = Duration.FromMinutes(5); // for testing; will be set to FromDays(1) later
+  private static Duration WaitTime = Duration.FromMinutes(60); // for testing; will be set to FromDays(1) later
 
   private static Instant Now => SystemClock.Instance.GetCurrentInstant();
 

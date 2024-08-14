@@ -23,13 +23,7 @@ public class CountdownBotMain
   public static async Task MainAsync()
   {
     // Let's get the bot set up
-#if DEBUG
-    Console.WriteLine("Debug mode active");
-    string botToken = File.ReadAllText("cfg/debug_token.cfg");
-#else
-    Console.WriteLine("Debug mode not active");
     string botToken = File.ReadAllText("cfg/token.cfg");
-#endif
 
     MainModule.LoadBinaryDivide();
     MainModule.LoadBinaryMinus();
@@ -45,16 +39,19 @@ public class CountdownBotMain
       MinimumLogLevel = Microsoft.Extensions.Logging.LogLevel.Information
     });
 
+    ulong debugGuildId = 0L;
+    if (File.Exists("cfg/debug_guild.cfg"))
+    {
+      debugGuildId = ulong.Parse(File.ReadAllText("cfg/debug_guild.cfg").Trim());
+      Console.WriteLine("Debugging!");
+    }
+
     IServiceProvider serviceProvider = new ServiceCollection().AddLogging(x => x.AddConsole()).BuildServiceProvider();
 
     Commands = Discord.UseCommands(
       new CommandsConfiguration()
       {
-#if DEBUG
-        DebugGuildId = 1243624266935828642L,
-#else
-        DebugGuildId = 0L,
-#endif
+        DebugGuildId = debugGuildId,
         ServiceProvider = serviceProvider,
         RegisterDefaultCommandProcessors = false
       }
@@ -65,11 +62,7 @@ public class CountdownBotMain
     SlashCommandProcessor processor = new();
     await Commands.AddProcessorAsync(processor);
 
-#if DEBUG
-    Commands.AddCommands(typeof(CountdownBotMain).Assembly, 1243624266935828642L);
-#else
     Commands.AddCommands(typeof(CountdownBotMain).Assembly);
-#endif
 
     await Discord.ConnectAsync();
 
